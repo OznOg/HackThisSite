@@ -9,7 +9,7 @@
  * Need openssl for md5sum and boost for lexical cast
  *
  * compile on Linux with
- *    g++ `pkg-config --libs openssl` -O3 -Wall -Wextra prog3.cpp 
+ *    g++ `pkg-config --libs openssl` -fopenmp -O3 -Wall -Wextra prog3.cpp
  *
  */
 
@@ -102,19 +102,32 @@ public:
 
     std::optional<std::string> force() const
     {
+        std::optional<std::string> res;
+        static bool cancel = false;
+
         // fist element is
         // [hex value of first serial letter] + [first letter of md5 as int] - Md5sum
         // thus Md5sum = [48 .. 90] + [0 .. 15] - encrypted[0]
         // => Md5sum is in range [48 .. 105] - encrypted[0]
         // as I considere that it is quite unlikely that [48 .. 90] + [0 .. 15] == 48
         // is begin at midway and search around mean first
-        for (auto i = 0; i < 29; i = i > 0 ? -i : 1 - i) {
+        #pragma omp parallel shared(cancel)
+        #pragma omp for schedule(auto)
+        for (auto i = -29; i < 29; i++) {
             auto sum = -encrypted[0] + i + 48 + 29;
-            auto hash = findHash(std::make_pair(std::string(""), sum), "");
-            if (hash)
-                return hash;
+            auto hash = findHash(cancel, std::make_pair(std::string(""), sum), "");
+            if (hash) {
+                // the cancel boolean is here to 'forward' cancellation to
+                // function findHash so that exploration of the tree can be
+                // aborted if one thread already found the correct hash
+                cancel = true;
+                #pragma omp cancel for
+                res = hash;
+            }
+            // Check for cancellations signalled by other threads:
+            #pragma omp cancellation point for
         }
-        return {};
+        return res;
     }
 
     std::optional<std::string> decode() const
@@ -143,7 +156,7 @@ public:
     }
 
 private:
-    bool charIsValid(auto pos, unsigned char new_char) const
+    bool charIsValid(int pos, unsigned char new_char) const
     {
         /* Some letters are predefined depending on their position as they
          * follow the pattern: XXX-XXX-OEM-XXX-1.1\n */
@@ -191,9 +204,11 @@ private:
         return make_pair(newSerial, new_total);
     }
 
-    std::optional<std::string> findHash(const std::pair<std::string, int> &head,
+    inline std::optional<std::string> findHash(bool &cancel, const std::pair<std::string, int> &head,
                                         const std::string &hash) const
     {
+        if (cancel)
+            return {};
         if (hash.size() < 32) {
             /* hash < 32 means that it was not completely "guessed"; this means
              * that we must keep recursively explorate the possible values */
@@ -207,7 +222,7 @@ private:
                     continue; /* letter does not match, try next one... */
 
                 /* letter _may_ be correct, go on with next one */
-                auto goodHash = findHash(newHead.value(), newHash);
+                auto goodHash = findHash(cancel, newHead.value(), newHash);
                 if (goodHash)
                     return goodHash;
             }
@@ -226,7 +241,7 @@ private:
             if (!newHead)
                 return {}; // hash is wrong for the rest of text => fail
 
-            return findHash(newHead.value(), hash); // try next message's entry
+            return findHash(cancel, newHead.value(), hash); // try next message's entry
         }
 
         return {};
