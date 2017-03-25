@@ -1,0 +1,25 @@
+#!/bin/bash
+set -eu -o pipefail
+# to make gocr learn I used
+# for i in `for i in out/*png; do echo -n "$i ";gocr -C "0123456789ABCDEF" -d 0 -m 338 -p ./db/ $i; done | grep _ | cut -d_ -f 1`; do gocr -m 386 -C "0123456789ABCDEF" -d 0 -a 100 -p ./db/ $i; done
+# this make it use a custom database, but need to learn letters from images; I guess a few hundreds of learned images is enougth
+
+# The image.html file is the page that draws the spiral; personnally, I use
+# "save link as" in firefox 
+
+# build data header from html page
+cat ./image.html | grep "new Array" | sed "s/var drawData = new Array(/#include <vector>\nstatic const std::vector<int> data = {\n/" | sed "s/);/};/" > prog6.h
+
+# indent it to make it redable, not really mandatory...
+indent prog6.h
+
+g++ `pkg-config --libs opencv` -std=c++11 -o prog6 prog6.cpp
+
+./prog6
+
+for i in out/*png
+do
+   echo -n "$i "
+   gocr -C "0123456789ABCDEF" -d 0 -a 85 -m 338 -p ./db/ $i
+done | cut -d' ' -f2 | tr '\n'  ' ' | sed "s/ //g" && echo
+
