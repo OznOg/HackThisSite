@@ -1,0 +1,4 @@
+the batfile is generated and the program forks to run in...
+so just need to break just before CreateProcess() call and copy the batch file.
+you may notice that the script is giving the password in clear
+
