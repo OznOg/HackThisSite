@@ -1,0 +1,5 @@
+disassemble with jetbrains and see that the password is decyphered from
+"fm`{f}kpwrn" and a custom algo.
+Thus I rewrote the algo in C++ and decyphered it and get: ihatethereg
+(I must say that I don't really see any point in messing around with registery...)
+
